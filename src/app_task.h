@@ -12,10 +12,6 @@
 
 struct Identify;
 
-#ifndef CONFIG_NCS_SAMPLE_MATTER_USE_DEFAULT_BUTTON_HANDLER
-enum class ButtonState { None, SoftwareUpdate, UAT };
-#endif
-
 class AppTask {
 public:
 	static AppTask &Instance()
@@ -40,8 +36,6 @@ private:
 	static constexpr uint16_t kTemperatureMeasurementStep = 100; /* 1 degree Celsius */
 
 	static void UpdateTemperatureTimeoutCallback(k_timer *timer);
-
-	static void ButtonEventHandler(Nrf::ButtonState state, Nrf::ButtonMask hasChanged);
 
 	int16_t mTemperatureSensorMaxValue = 0;
 	int16_t mTemperatureSensorMinValue = 0;

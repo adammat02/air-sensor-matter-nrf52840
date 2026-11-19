@@ -69,6 +69,9 @@ void emberAfClusterInitCallback(EndpointId endpoint, ClusterId clusterId) {
   case app::Clusters::OperationalCredentials::Id:
     emberAfOperationalCredentialsClusterInitCallback(endpoint);
     break;
+  case app::Clusters::RelativeHumidityMeasurement::Id:
+    emberAfRelativeHumidityMeasurementClusterInitCallback(endpoint);
+    break;
   case app::Clusters::SoftwareDiagnostics::Id:
     emberAfSoftwareDiagnosticsClusterInitCallback(endpoint);
     break;
@@ -151,6 +154,11 @@ emberAfOtaSoftwareUpdateRequestorClusterInitCallback(EndpointId endpoint) {
 }
 void __attribute__((weak))
 emberAfOperationalCredentialsClusterInitCallback(EndpointId endpoint) {
+  // To prevent warning
+  (void)endpoint;
+}
+void __attribute__((weak))
+emberAfRelativeHumidityMeasurementClusterInitCallback(EndpointId endpoint) {
   // To prevent warning
   (void)endpoint;
 }

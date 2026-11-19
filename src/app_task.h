@@ -12,7 +12,8 @@
 
 struct Identify;
 
-class AppTask {
+class AppTask
+{
 public:
 	static AppTask &Instance()
 	{
@@ -22,21 +23,27 @@ public:
 
 	CHIP_ERROR StartApp();
 
-	/* Defined by cluster temperature measured value = 100 x temperature in degC with resolution of
-	 * 0.01 degC. */
-	void UpdateTemperatureMeasurement();
+	void UpdateMeasurement();
 
 	int16_t GetCurrentTemperature() const { return mCurrentTemperature; }
+	uint16_t GetCurrentHumidity() const { return mCurrentHumidity; }
 
 private:
 	CHIP_ERROR Init();
 	k_timer mTimer;
 
-	static constexpr uint16_t kTemperatureMeasurementIntervalMs = 10000; /* 10 seconds */
+	static constexpr uint16_t kMeasurementIntervalMs = 10000; /* 10 seconds */
 
-	static void UpdateTemperatureTimeoutCallback(k_timer *timer);
+	static void UpdateMeasurementTimeoutCallback(k_timer *timer);
 
 	int16_t mTemperatureSensorMaxValue = 0;
 	int16_t mTemperatureSensorMinValue = 0;
 	int16_t mCurrentTemperature = 0;
+
+	uint16_t mHumiditySensorMaxValue = 0;
+	uint16_t mHumiditySensorMinValue = 0;
+	uint16_t mCurrentHumidity = 0;
+
+	void UpdateTemperature();
+	void UpdateHumidity();
 };

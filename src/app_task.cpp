@@ -29,15 +29,15 @@ using namespace ::chip::DeviceLayer;
 namespace
 {
 	constexpr chip::EndpointId kTemperatureSensorEndpointId = 1;
+	constexpr chip::EndpointId kHumiditySensorEndpointId = 2;
 
-	Nrf::Matter::IdentifyCluster sIdentifyCluster(kTemperatureSensorEndpointId);
+	Nrf::Matter::IdentifyCluster sTemperatureIdentifyCluster(kTemperatureSensorEndpointId);
+	Nrf::Matter::IdentifyCluster sHumidityIdentifyCluster(kHumiditySensorEndpointId);
 
 } /* namespace */
 
-void AppTask::UpdateTemperatureMeasurement()
+void AppTask::UpdateMeasurement()
 {
-	struct sensor_value temp;
-
 	int ret = sensor_sample_fetch(sht30);
 	if (ret < 0)
 	{
@@ -45,16 +45,21 @@ void AppTask::UpdateTemperatureMeasurement()
 		return;
 	}
 
-	ret = sensor_channel_get(sht30, SENSOR_CHAN_AMBIENT_TEMP, &temp);
+	UpdateTemperature();
+	UpdateHumidity();
+}
+
+void AppTask::UpdateTemperature()
+{
+	struct sensor_value temp;
+	int ret = sensor_channel_get(sht30, SENSOR_CHAN_AMBIENT_TEMP, &temp);
 	if (ret < 0)
 	{
-		LOG_ERR("SHT30 channel temp read failed");
+		LOG_ERR("SHT30 channel temperature read failed");
 		return;
 	}
-
 	int16_t measuredTemperature = static_cast<int16_t>(temp.val1 * 100 + temp.val2 / 10000);
-	if (measuredTemperature < mTemperatureSensorMinValue
-			|| measuredTemperature > mTemperatureSensorMaxValue)
+	if (measuredTemperature < mTemperatureSensorMinValue || measuredTemperature > mTemperatureSensorMaxValue)
 	{
 		LOG_WRN("SHT30 Temperature out of range");
 		return;
@@ -62,7 +67,26 @@ void AppTask::UpdateTemperatureMeasurement()
 	mCurrentTemperature = measuredTemperature;
 }
 
-void AppTask::UpdateTemperatureTimeoutCallback(k_timer *timer)
+void AppTask::UpdateHumidity()
+{
+	struct sensor_value hum;
+	int ret = sensor_channel_get(sht30, SENSOR_CHAN_HUMIDITY, &hum);
+	if (ret < 0)
+	{
+		LOG_ERR("SHT30 channel humidity read failed");
+		return;
+	}
+
+	uint16_t measuredHumidity = static_cast<uint16_t>(hum.val1 * 100 + hum.val2 / 10000);
+	if (measuredHumidity < mHumiditySensorMinValue || measuredHumidity > mHumiditySensorMaxValue)
+	{
+		LOG_WRN("SHT30 Humidity out of range");
+		return;
+	}
+	mCurrentHumidity = measuredHumidity;
+}
+
+void AppTask::UpdateMeasurementTimeoutCallback(k_timer *timer)
 {
 	if (!timer || !timer->user_data)
 	{
@@ -72,7 +96,7 @@ void AppTask::UpdateTemperatureTimeoutCallback(k_timer *timer)
 	DeviceLayer::PlatformMgr().ScheduleWork(
 			[](intptr_t p)
 			{
-				AppTask::Instance().UpdateTemperatureMeasurement();
+				AppTask::Instance().UpdateMeasurement();
 
 				Protocols::InteractionModel::Status status =
 						Clusters::TemperatureMeasurement::Attributes::MeasuredValue::Set(
@@ -82,6 +106,16 @@ void AppTask::UpdateTemperatureTimeoutCallback(k_timer *timer)
 				{
 					LOG_ERR("Updating temperature measurement failed %x", to_underlying(status));
 				}
+
+				status =
+						Clusters::RelativeHumidityMeasurement::Attributes::MeasuredValue::Set(
+								kHumiditySensorEndpointId, AppTask::Instance().GetCurrentHumidity());
+
+				if (status != Protocols::InteractionModel::Status::Success)
+				{
+					LOG_ERR("Updating humidity measurement failed %x", to_underlying(status));
+				}
+
 			},
 			reinterpret_cast<intptr_t>(timer->user_data));
 }
@@ -107,7 +141,8 @@ CHIP_ERROR AppTask::Init()
 	 * state. */
 	ReturnErrorOnFailure(Nrf::Matter::RegisterEventHandler(Nrf::Board::DefaultMatterEventHandler, 0));
 
-	ReturnErrorOnFailure(sIdentifyCluster.Init());
+	ReturnErrorOnFailure(sTemperatureIdentifyCluster.Init());
+	ReturnErrorOnFailure(sHumidityIdentifyCluster.Init());
 
 	return Nrf::Matter::StartServer();
 }
@@ -138,9 +173,32 @@ CHIP_ERROR AppTask::StartApp()
 
 	mTemperatureSensorMaxValue = val.Value();
 
-	k_timer_init(&mTimer, AppTask::UpdateTemperatureTimeoutCallback, nullptr);
+	DataModel::Nullable<uint16_t> valu;
+	status =
+			Clusters::RelativeHumidityMeasurement::Attributes::MinMeasuredValue::Get(kHumiditySensorEndpointId, valu);
+
+	if (status != Protocols::InteractionModel::Status::Success || valu.IsNull())
+	{
+		LOG_ERR("Failed to get humidity measurement min value %x", to_underlying(status));
+		return CHIP_ERROR_INCORRECT_STATE;
+	}
+
+	mHumiditySensorMinValue = valu.Value();
+
+	status = Clusters::RelativeHumidityMeasurement::Attributes::MaxMeasuredValue::Get(kHumiditySensorEndpointId, valu);
+
+	if (status != Protocols::InteractionModel::Status::Success || valu.IsNull())
+	{
+		LOG_ERR("Failed to get humidity measurement max value %x", to_underlying(status));
+		return CHIP_ERROR_INCORRECT_STATE;
+	}
+
+	mHumiditySensorMaxValue = valu.Value();
+
+	k_timer_init(&mTimer, AppTask::UpdateMeasurementTimeoutCallback, nullptr);
 	k_timer_user_data_set(&mTimer, this);
-	k_timer_start(&mTimer, K_MSEC(kTemperatureMeasurementIntervalMs), K_MSEC(kTemperatureMeasurementIntervalMs));
+	k_timer_start(&mTimer, K_NO_WAIT, K_MSEC(kMeasurementIntervalMs));
+
 	while (true)
 	{
 		Nrf::DispatchNextTask();

@@ -14,9 +14,13 @@
 
 #include <app-common/zap-generated/attributes/Accessors.h>
 
+#include <zephyr/drivers/sensor.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_DECLARE(app, CONFIG_CHIP_APP_LOG_LEVEL);
+
+#define SHT30_NODE DT_NODELABEL(sht3xd)
+static const struct device *const sht30 = DEVICE_DT_GET(SHT30_NODE);
 
 using namespace ::chip;
 using namespace ::chip::app;
@@ -32,11 +36,18 @@ Nrf::Matter::IdentifyCluster sIdentifyCluster(kTemperatureSensorEndpointId);
 
 void AppTask::UpdateTemperatureMeasurement()
 {
+	struct sensor_value temp;
 	/* Linear temperature increase that is wrapped around to min value after reaching the max value. */
-	if (mCurrentTemperature < mTemperatureSensorMaxValue) {
-		mCurrentTemperature += kTemperatureMeasurementStep;
-	} else {
+	int ret = sensor_sample_fetch(sht30);
+	  if (ret < 0)
+	{
+		LOG_ERR("SHT30 fetch error");
 		mCurrentTemperature = mTemperatureSensorMinValue;
+	}
+	else
+	{
+	  sensor_channel_get(sht30, SENSOR_CHAN_AMBIENT_TEMP, &temp);
+		mCurrentTemperature = static_cast<int16_t>(temp.val1 * 100 + temp.val2 / 10000);
 	}
 }
 
@@ -68,6 +79,12 @@ CHIP_ERROR AppTask::Init()
 
 	if (!Nrf::GetBoard().Init()) {
 		LOG_ERR("User interface initialization failed.");
+		return CHIP_ERROR_INCORRECT_STATE;
+	}
+
+	if (!device_is_ready(sht30))
+	{
+		LOG_ERR("SHT30 is not ready");
 		return CHIP_ERROR_INCORRECT_STATE;
 	}
 

@@ -28,48 +28,62 @@ using namespace ::chip::DeviceLayer;
 
 namespace
 {
-constexpr chip::EndpointId kTemperatureSensorEndpointId = 1;
+	constexpr chip::EndpointId kTemperatureSensorEndpointId = 1;
 
-Nrf::Matter::IdentifyCluster sIdentifyCluster(kTemperatureSensorEndpointId);
+	Nrf::Matter::IdentifyCluster sIdentifyCluster(kTemperatureSensorEndpointId);
 
 } /* namespace */
 
 void AppTask::UpdateTemperatureMeasurement()
 {
 	struct sensor_value temp;
-	/* Linear temperature increase that is wrapped around to min value after reaching the max value. */
+
 	int ret = sensor_sample_fetch(sht30);
-	  if (ret < 0)
+	if (ret < 0)
 	{
 		LOG_ERR("SHT30 fetch error");
-		mCurrentTemperature = mTemperatureSensorMinValue;
+		return;
 	}
-	else
+
+	ret = sensor_channel_get(sht30, SENSOR_CHAN_AMBIENT_TEMP, &temp);
+	if (ret < 0)
 	{
-	  sensor_channel_get(sht30, SENSOR_CHAN_AMBIENT_TEMP, &temp);
-		mCurrentTemperature = static_cast<int16_t>(temp.val1 * 100 + temp.val2 / 10000);
+		LOG_ERR("SHT30 channel temp read failed");
+		return;
 	}
+
+	int16_t measuredTemperature = static_cast<int16_t>(temp.val1 * 100 + temp.val2 / 10000);
+	if (measuredTemperature < mTemperatureSensorMinValue
+			|| measuredTemperature > mTemperatureSensorMaxValue)
+	{
+		LOG_WRN("SHT30 Temperature out of range");
+		return;
+	}
+	mCurrentTemperature = measuredTemperature;
 }
 
 void AppTask::UpdateTemperatureTimeoutCallback(k_timer *timer)
 {
-	if (!timer || !timer->user_data) {
+	if (!timer || !timer->user_data)
+	{
 		return;
 	}
 
 	DeviceLayer::PlatformMgr().ScheduleWork(
-		[](intptr_t p) {
-			AppTask::Instance().UpdateTemperatureMeasurement();
+			[](intptr_t p)
+			{
+				AppTask::Instance().UpdateTemperatureMeasurement();
 
-			Protocols::InteractionModel::Status status =
-				Clusters::TemperatureMeasurement::Attributes::MeasuredValue::Set(
-					kTemperatureSensorEndpointId, AppTask::Instance().GetCurrentTemperature());
+				Protocols::InteractionModel::Status status =
+						Clusters::TemperatureMeasurement::Attributes::MeasuredValue::Set(
+								kTemperatureSensorEndpointId, AppTask::Instance().GetCurrentTemperature());
 
-			if (status != Protocols::InteractionModel::Status::Success) {
-				LOG_ERR("Updating temperature measurement failed %x", to_underlying(status));
-			}
-		},
-		reinterpret_cast<intptr_t>(timer->user_data));
+				if (status != Protocols::InteractionModel::Status::Success)
+				{
+					LOG_ERR("Updating temperature measurement failed %x", to_underlying(status));
+				}
+			},
+			reinterpret_cast<intptr_t>(timer->user_data));
 }
 
 CHIP_ERROR AppTask::Init()
@@ -77,7 +91,8 @@ CHIP_ERROR AppTask::Init()
 	/* Initialize Matter stack */
 	ReturnErrorOnFailure(Nrf::Matter::PrepareServer());
 
-	if (!Nrf::GetBoard().Init()) {
+	if (!Nrf::GetBoard().Init())
+	{
 		LOG_ERR("User interface initialization failed.");
 		return CHIP_ERROR_INCORRECT_STATE;
 	}
@@ -103,9 +118,10 @@ CHIP_ERROR AppTask::StartApp()
 
 	DataModel::Nullable<int16_t> val;
 	Protocols::InteractionModel::Status status =
-		Clusters::TemperatureMeasurement::Attributes::MinMeasuredValue::Get(kTemperatureSensorEndpointId, val);
+			Clusters::TemperatureMeasurement::Attributes::MinMeasuredValue::Get(kTemperatureSensorEndpointId, val);
 
-	if (status != Protocols::InteractionModel::Status::Success || val.IsNull()) {
+	if (status != Protocols::InteractionModel::Status::Success || val.IsNull())
+	{
 		LOG_ERR("Failed to get temperature measurement min value %x", to_underlying(status));
 		return CHIP_ERROR_INCORRECT_STATE;
 	}
@@ -114,7 +130,8 @@ CHIP_ERROR AppTask::StartApp()
 
 	status = Clusters::TemperatureMeasurement::Attributes::MaxMeasuredValue::Get(kTemperatureSensorEndpointId, val);
 
-	if (status != Protocols::InteractionModel::Status::Success || val.IsNull()) {
+	if (status != Protocols::InteractionModel::Status::Success || val.IsNull())
+	{
 		LOG_ERR("Failed to get temperature measurement max value %x", to_underlying(status));
 		return CHIP_ERROR_INCORRECT_STATE;
 	}
@@ -124,7 +141,8 @@ CHIP_ERROR AppTask::StartApp()
 	k_timer_init(&mTimer, AppTask::UpdateTemperatureTimeoutCallback, nullptr);
 	k_timer_user_data_set(&mTimer, this);
 	k_timer_start(&mTimer, K_MSEC(kTemperatureMeasurementIntervalMs), K_MSEC(kTemperatureMeasurementIntervalMs));
-	while (true) {
+	while (true)
+	{
 		Nrf::DispatchNextTask();
 	}
 

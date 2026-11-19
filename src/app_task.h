@@ -33,7 +33,6 @@ private:
 	k_timer mTimer;
 
 	static constexpr uint16_t kTemperatureMeasurementIntervalMs = 10000; /* 10 seconds */
-	static constexpr uint16_t kTemperatureMeasurementStep = 100; /* 1 degree Celsius */
 
 	static void UpdateTemperatureTimeoutCallback(k_timer *timer);
 
